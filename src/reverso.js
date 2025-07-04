@@ -1,11 +1,12 @@
 const { getRandom } = require('random-useragent')
 const { load } = require('cheerio')
+const { chromium } = require('playwright');
 
 const available = require('./utils/languages/available.js')
 const compatibility = require('./utils/languages/compatibility.js')
 const SupportedLanguages = require('./enums/languages.js')
-const transformResponse = require('./utils/transform-response')
-const toBase64 = require('./utils/to-base64')
+const transformResponse = require('./utils/transform-response.js')
+const toBase64 = require('./utils/to-base64.js');
 
 module.exports = class Reverso {
     /** @private */
@@ -45,14 +46,14 @@ module.exports = class Reverso {
         target = SupportedLanguages.RUSSIAN,
         cb = null
     ) {
-        source = source.toLowerCase()
-        target = target.toLowerCase()
+        source = source.toLowerCase();
+        target = target.toLowerCase();
 
         if (cb && typeof cb !== 'function') {
             return {
                 ok: false,
                 message: 'getContext: cb parameter must be type of function',
-            }
+            };
         }
 
         if (
@@ -63,60 +64,74 @@ module.exports = class Reverso {
             const error = {
                 ok: false,
                 message: 'getContext: invalid language passed to the method',
-            }
+            };
 
-            if (cb) cb(error)
-
-            return error
+            if (cb) cb(error);
+            return error;
         }
 
-        const response = await this.#request({
-            method: 'GET',
-            url:
-                this.CONTEXT_URL +
-                [source, target].join('-') +
-                '/' +
-                encodeURIComponent(text).replace(/%20/g, '+'),
-        })
-        if (!response.success) return this.#handleError(response.error, cb)
+        const url =
+            this.CONTEXT_URL +
+            [source, target].join('-') +
+            '/' +
+            encodeURIComponent(text).replace(/%20/g, '+');
 
-        const $ = load(response.data)
+        const browser = await chromium.launch();
+        const page = await browser.newPage({
+        userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+        viewport: { width: 1280, height: 800 }
+        });
+
+        // Navigate with more forgiving wait conditions and longer timeout
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+        // Wait a bit extra to let JS load dynamic content
+        await page.waitForTimeout(3000);
+
+        // Get the page HTML content
+        const html = await page.content();
+
+        await browser.close();
+
+        const $ = load(html);
+
         const sourceDirection =
             source === SupportedLanguages.ARABIC
                 ? `rtl ${SupportedLanguages.ARABIC}`
                 : source === SupportedLanguages.HEBREW
                 ? 'rtl'
-                : 'ltr'
+                : 'ltr';
         const targetDirection =
             target === 'arabic'
                 ? `rtl ${SupportedLanguages.ARABIC}`
                 : target === SupportedLanguages.HEBREW
                 ? 'rtl'
-                : 'ltr'
+                : 'ltr';
 
         const sourceExamples = $(
             `.example > div.src.${sourceDirection} > span.text`
         )
             .text()
             .trim()
-            .split('\n')
+            .split('\n');
         const targetExamples = $(
             `.example > div.trg.${targetDirection} > span.text`
         )
             .text()
             .trim()
-            .split('\n')
+            .split('\n');
         const targetTranslations = $('#translations-content > div')
             .text()
             .trim()
-            .split('\n')
+            .split('\n');
 
         const examples = sourceExamples.map((e, i) => ({
             id: i,
             source: e.trim(),
-            target: targetExamples[i].trim(),
-        }))
-        const translations = targetTranslations.map((e) => e.trim())
+            target: targetExamples[i]?.trim() || '',
+        }));
+        const translations = targetTranslations.map((e) => e.trim());
 
         const result = {
             ok: true,
@@ -125,11 +140,11 @@ module.exports = class Reverso {
             target,
             translations,
             examples,
-        }
+        };
 
-        if (cb) cb(null, result)
+        if (cb) cb(null, result);
 
-        return result
+        return result;
     }
 
     /**
