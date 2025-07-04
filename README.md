@@ -1,4 +1,5 @@
 # Reverso API
+> **Note:** This is a personally modified version of the original `reverso-api`. It includes a local fix for a bug in the `getContext` method related to setting the User-Agent in Playwright.
 
 [![version](https://badgen.net/npm/v/reverso-api)](https://npmjs.com/package/reverso-api)
 [![downloads](https://badgen.net/npm/dm/reverso-api)](https://www.npmjs.com/package/reverso-api)
